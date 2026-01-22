@@ -26,6 +26,12 @@ def upgrade() -> None:
         sa.Column("id", sa.String(), primary_key=True),
         sa.Column("email", sa.String(), unique=True, nullable=False),
         sa.Column("password", sa.String(), nullable=False),
+        sa.Column(
+            "role",
+            sa.Enum("user", "admin", name="user_role"),
+            nullable=False,
+            server_default="user",
+        ),
     )
 
 
