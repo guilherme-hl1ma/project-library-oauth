@@ -23,8 +23,16 @@ def upgrade() -> None:
     op.create_table(
         "oauth_client",
         sa.Column("client_id", sa.String(), primary_key=True),
-        sa.Column("secret", sa.String(50), nullable=False),
-        sa.Column("redirect_uri", sa.Unicode(200), nullable=False),
+        sa.Column("client_secret", sa.String(255), nullable=False),
+        sa.Column("redirect_uris", sa.Text(), nullable=False),
+        sa.Column("client_name", sa.String(100), nullable=True),
+        sa.Column("grant_types", sa.String(200), server_default="authorization_code"),
+        sa.Column(
+            "registration_access_token", sa.String(255), nullable=True, index=True
+        ),
+        sa.Column("issued_at", sa.Integer(), nullable=False),
+        sa.Column("software_id", sa.String(100), nullable=True),
+        sa.Column("is_active", sa.Boolean(), server_default="true"),
     )
 
 
