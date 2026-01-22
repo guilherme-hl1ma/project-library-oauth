@@ -1,10 +1,14 @@
-from sys import prefix
-from fastapi.routing import APIRoute
+from typing import Annotated
+from fastapi import Depends
+from fastapi.routing import APIRouter
+
+from app.api.dependencies.auth import get_user_jwt_auth
+from app.models.user import User
 
 
-router = APIRoute(prefix="/dcr", tags=["Dynamic Client Registration"])
+router = APIRouter(prefix="/dcr", tags=["Dynamic Client Registration"])
 
 
 @router.post("/register")
-def register_client():
-    pass
+def register_client(current_user: Annotated[User, Depends(get_user_jwt_auth)]):
+    return "teste"

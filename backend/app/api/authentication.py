@@ -1,13 +1,16 @@
 from datetime import datetime, timedelta, timezone
 import os
+import uuid
+import traceback
 from fastapi.responses import JSONResponse
 from sqlmodel import select
 import jwt
 from fastapi import APIRouter, HTTPException
 
-from backend.app.core.database import SessionDep
-from backend.app.core.encrypt_pwd import hash_pwd
-from backend.app.models.user import User
+from app.core.database import SessionDep
+from app.core.encrypt_pwd import hash_pwd
+from app.models.user import UserRole, User
+from app.schemas.user import UserRegistration
 
 router = APIRouter(prefix="/auth", tags=["JWT Authentication"])
 
@@ -16,33 +19,40 @@ JWT_ISSUER = os.getenv("JWT_ISSUER")
 
 
 @router.post("/signup")
-def signup_jwt(user: User, session: SessionDep):
+def signup_jwt(user: UserRegistration, session: SessionDep):
     try:
-        user_db = session.exec(select(User).where(User.email == user.email)).first()
+        user_db: User | None = session.exec(
+            select(User).where(User.email == user.email)
+        ).first()
         if user_db:
             raise HTTPException(
                 status_code=409,
                 detail="E-mail already exists. Try again using another one.",
             )
 
-        email = user.email
-        password = user.password
-        hashed = hash_pwd(password)
-        user.password = hashed
+        user_id = str(uuid.uuid4())
+        new_user: User = User(
+            id=user_id,
+            email=user.email,
+            password=hash_pwd(user.password),
+            role=UserRole.USER,
+        )
 
         issued_time = datetime.now(timezone.utc).timestamp()
-        expiration_time = (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp()
+        expiration_time = (datetime.now(timezone.utc) + timedelta(hours=24)).timestamp()
         payload = {
             "iss": JWT_ISSUER,
-            "sub": email,
+            "sub": user_id,
             "iat": issued_time,
             "exp": expiration_time,
+            "email": user.email,
+            "role": UserRole.USER.value,
         }
 
         token = jwt.encode(
             payload=payload,
             algorithm="HS256",
-            key=SECRET_JWT,
+            key=str(SECRET_JWT),
         )
 
         response = JSONResponse(status_code=200, content=token)
@@ -55,13 +65,24 @@ def signup_jwt(user: User, session: SessionDep):
             max_age=60 * 60 * 24,
         )
 
-        session.add(user)
+        session.add(new_user)
         session.commit()
-        session.refresh(user)
+        session.refresh(new_user)
 
         return response
-    except (Exception, HTTPException) as e:
-        print("[signup_jwt - signup_session] Error:", e)
+    except HTTPException as e:
+        print("[signup_jwt - signup_session] HTTPException:", str(e))
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal Server Error"}
+        )
+    except TypeError as e:
+        print("[signup_jwt - signup_session] TypeError:", str(e))
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal Server Error"}
+        )
+    except Exception as e:
+        print("[signup_jwt - signup_session] Error:", str(e))
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
         )
