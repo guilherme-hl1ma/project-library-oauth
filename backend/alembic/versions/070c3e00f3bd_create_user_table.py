@@ -37,3 +37,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("user")
+    op.execute("DROP TYPE user_role")

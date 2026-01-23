@@ -17,7 +17,7 @@ def get_user_jwt_auth(session: SessionDep, request: Request) -> User | None:
             raise HTTPException(status_code=401, detail="Invalid credential")
 
         token_decoded: dict = jwt.decode(
-            jwt=token, key=SECRET_JWT, algorithms=["HS256"], issuer=JWT_ISSUER
+            jwt=token, key=str(SECRET_JWT), algorithms=["HS256"], issuer=JWT_ISSUER
         )
 
         user_id = token_decoded.get("sub", None)

@@ -6,7 +6,7 @@ import os
 
 sqlite_url = os.getenv("POSTGRES_URL")
 connect_args = {"check_same_thread": False}
-engine = create_engine(sqlite_url)
+engine = create_engine(str(sqlite_url))
 
 
 def get_session():
