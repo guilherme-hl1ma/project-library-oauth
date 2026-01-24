@@ -6,6 +6,14 @@ from dotenv import load_dotenv
 from alembic.config import Config
 from alembic import command
 
+from app.api.handlers import (
+    application_error_handler,
+    domain_error_handler,
+    unexpected_error_handler,
+)
+from app.domain.exceptions import DomainError
+from app.services.exceptions import ApplicationError
+
 log = logging.getLogger("uvicorn")
 
 
@@ -28,7 +36,11 @@ async def lifespan(app_: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-from app.api import dcr, authentication
+from app.api.routes import dcr, authentication
 
 app.include_router(dcr.router)
 app.include_router(authentication.router)
+
+app.add_exception_handler(DomainError, domain_error_handler)
+app.add_exception_handler(ApplicationError, application_error_handler)
+app.add_exception_handler(Exception, unexpected_error_handler)

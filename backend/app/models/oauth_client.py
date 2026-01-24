@@ -1,7 +1,7 @@
 from sqlalchemy import JSON
 from sqlmodel import Column, Field, SQLModel
 
-from app.domain.oauth_client_domain import OAuthClient
+from app.domain.oauth_client.oauth_client_domain import OAuthClient
 
 
 class OAuthClientModel(SQLModel, table=True):

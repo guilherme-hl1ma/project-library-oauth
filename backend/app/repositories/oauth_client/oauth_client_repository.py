@@ -1,5 +1,5 @@
 from sqlmodel import Session
-from app.domain.oauth_client_domain import OAuthClient
+from app.domain.oauth_client.oauth_client_domain import OAuthClient
 from app.models.oauth_client import OAuthClientModel
 from app.repositories.oauth_client.ioauth_client_repository import (
     IOAuthClientRepository,
