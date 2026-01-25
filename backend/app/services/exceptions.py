@@ -8,3 +8,7 @@ class ClientAlreadyExists(ApplicationError):
 
 class ClientNotFound(ApplicationError):
     pass
+
+
+class InternalServerError(Exception):
+    pass

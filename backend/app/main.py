@@ -12,7 +12,7 @@ from app.api.handlers import (
     unexpected_error_handler,
 )
 from app.domain.exceptions import DomainError
-from app.services.exceptions import ApplicationError
+from app.services.exceptions import ApplicationError, InternalServerError
 
 log = logging.getLogger("uvicorn")
 
@@ -43,4 +43,4 @@ app.include_router(authentication.router)
 
 app.add_exception_handler(DomainError, domain_error_handler)
 app.add_exception_handler(ApplicationError, application_error_handler)
-app.add_exception_handler(Exception, unexpected_error_handler)
+app.add_exception_handler(InternalServerError, unexpected_error_handler)
