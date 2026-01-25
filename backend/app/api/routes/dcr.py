@@ -1,12 +1,10 @@
-import time
 from typing import Annotated
-import uuid
 from fastapi import Depends
 from fastapi.routing import APIRouter
 
 from app.dependencies.auth import get_user_jwt_auth
 from app.dependencies.oauth_client import get_oauth_client_service
-from app.domain.oauth_client.oauth_client_domain import OAuthClient
+from app.domain.oauth_client.oauth_client_domain import OAuthClientDomain
 from app.models.user import User
 from app.schemas.dcr import ClientMetadataRegister, ClientMetadataResponse
 from app.services.oauth_client.ioauth_client_service import IOAuthClientService
@@ -24,13 +22,8 @@ def register_client(
     payload: ClientMetadataRegister,
 ) -> ClientMetadataResponse:
 
-    domain_client = OAuthClient(
-        client_id=str(uuid.uuid4()),
-        client_secret=str(uuid.uuid4()),
-        redirect_uris=payload.redirect_uris,
-        grant_types=[gt for gt in payload.grant_types],
-        client_name=payload.client_name,
-        issued_at=int(time.time()),
+    domain_client = OAuthClientDomain.create_new(
+        payload=payload, current_user=current_user
     )
 
     register_response = oauth_client_service.register_client(client=domain_client)

@@ -8,7 +8,7 @@ import jwt
 from fastapi import APIRouter, HTTPException
 
 from app.core.database import SessionDep
-from app.core.encrypt_pwd import hash_pwd
+from app.core.bcrypt_encrypter import hash_text
 from app.models.user import UserRole, User
 from app.schemas.user import UserRegistration
 
@@ -34,7 +34,7 @@ def signup_jwt(user: UserRegistration, session: SessionDep):
         new_user: User = User(
             id=user_id,
             email=user.email,
-            password=hash_pwd(user.password),
+            password=hash_text(user.password),
             role=UserRole.USER,
         )
 

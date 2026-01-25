@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 
-from app.domain.oauth_client.oauth_client_domain import OAuthClient
+from app.domain.oauth_client.oauth_client_domain import OAuthClientDomain
 
 
 class IOAuthClientRepository(ABC):
     @abstractmethod
-    def save(self, client: OAuthClient) -> OAuthClient:
+    def save(self, client: OAuthClientDomain) -> OAuthClientDomain:
         pass

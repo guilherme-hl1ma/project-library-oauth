@@ -1,10 +1,13 @@
+from typing import ClassVar
 from sqlalchemy import JSON
 from sqlmodel import Column, Field, SQLModel
 
-from app.domain.oauth_client.oauth_client_domain import OAuthClient
+from app.domain.oauth_client.oauth_client_domain import OAuthClientDomain
 
 
-class OAuthClientModel(SQLModel, table=True):
+class OAuthClient(SQLModel, table=True):
+    __tablename__ = "oauth_client"  # type: ignore
+
     client_id: str = Field(primary_key=True, nullable=False)
     client_secret: str = Field(nullable=False)
     redirect_uris: list[str] = Field(sa_column=Column(JSON, nullable=False))
@@ -15,12 +18,13 @@ class OAuthClientModel(SQLModel, table=True):
     software_id: str | None = Field(nullable=True)
     is_active: bool = Field(default=True)
 
-    def to_domain(self) -> OAuthClient:
-        return OAuthClient(
+    def to_domain(self, user_id: str) -> OAuthClientDomain:
+        return OAuthClientDomain(
             client_id=self.client_id,
             client_secret=self.client_secret,
             redirect_uris=self.redirect_uris,
             grant_types=self.grant_types,
+            user_id=user_id,
             client_name=self.client_name,
             issued_at=self.issued_at,
             registration_access_token=self.registration_access_token,
@@ -29,7 +33,7 @@ class OAuthClientModel(SQLModel, table=True):
         )
 
     @classmethod
-    def from_domain(cls, client: OAuthClient) -> "OAuthClientModel":
+    def from_domain(cls, client: OAuthClientDomain) -> "OAuthClient":
         return cls(
             client_id=client.client_id,
             client_secret=client.client_secret,
