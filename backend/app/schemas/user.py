@@ -8,3 +8,8 @@ class UserRegistration(BaseModel):
     email: str
     password: str
     role: str | None = UserRole.USER.value
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
