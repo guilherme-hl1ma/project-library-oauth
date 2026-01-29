@@ -11,7 +11,7 @@ from app.api.handlers import (
     domain_error_handler,
     unexpected_error_handler,
 )
-from app.domain.exceptions import DomainError
+from app.domain.oauth_client.exceptions import DomainError
 from app.services.exceptions import ApplicationError, InternalServerError
 
 log = logging.getLogger("uvicorn")
@@ -36,10 +36,11 @@ async def lifespan(app_: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-from app.api.routes import dcr, authentication
+from app.api.routes import dcr, authentication, auth_code_grant
 
 app.include_router(dcr.router)
 app.include_router(authentication.router)
+app.include_router(auth_code_grant.router)
 
 app.add_exception_handler(DomainError, domain_error_handler)
 app.add_exception_handler(ApplicationError, application_error_handler)

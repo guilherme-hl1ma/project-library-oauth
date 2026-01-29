@@ -6,7 +6,7 @@ from app.dependencies.auth import get_user_jwt_auth
 from app.dependencies.oauth_client import get_oauth_client_service
 from app.domain.oauth_client.oauth_client_domain import OAuthClientDomain
 from app.models.user import User
-from app.schemas.dcr import ClientMetadataRegister, ClientMetadataResponse
+from app.schemas.dcr.dcr import ClientMetadataRegister, ClientMetadataResponse
 from app.services.oauth_client.ioauth_client_service import IOAuthClientService
 
 

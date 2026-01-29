@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from app.core.database import SessionDep
 from app.core.bcrypt_encrypter import hash_text, verify_text
 from app.models.user import UserRole, User
-from app.schemas.user import UserLogin, UserRegistration
+from app.schemas.user.user import UserLogin, UserRegistration
 
 router = APIRouter(prefix="/auth", tags=["JWT Authentication"])
 

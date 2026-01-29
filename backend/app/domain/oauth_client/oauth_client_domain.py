@@ -4,7 +4,7 @@ import time
 import uuid
 
 from app.models.user import User
-from app.schemas.dcr import ClientMetadataRegister
+from app.schemas.dcr.dcr import ClientMetadataRegister
 
 
 @dataclass

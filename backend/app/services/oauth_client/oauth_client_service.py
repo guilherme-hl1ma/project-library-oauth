@@ -1,5 +1,5 @@
 from urllib.parse import urlparse
-from app.domain.exceptions import InvalidRedirectURI
+from app.domain.oauth_client.exceptions import InvalidRedirectURI
 from app.domain.oauth_client.oauth_client_domain import OAuthClientDomain
 from app.repositories.oauth_client.ioauth_client_repository import (
     IOAuthClientRepository,
