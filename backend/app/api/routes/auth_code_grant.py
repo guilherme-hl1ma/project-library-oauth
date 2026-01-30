@@ -72,7 +72,7 @@ def authorize_client(
         redis_client.set(
             name=f"{current_user.id}:auth_code:{code}",
             value=json.dumps(auth_data),
-            ex=600,
+            ex=600,  # RFC 6749 - "A maximum authorization code lifetime of 10 minutes is RECOMMENDED"
         )
 
         query = f"code={code}"
