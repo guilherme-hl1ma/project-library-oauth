@@ -2,7 +2,7 @@ from typing import Annotated
 from fastapi import Depends
 from fastapi.routing import APIRouter
 
-from app.dependencies.auth import get_user_jwt_auth
+from app.dependencies.auth import get_user_required
 from app.dependencies.oauth_client import get_oauth_client_service
 from app.domain.oauth_client.oauth_client_domain import OAuthClientDomain
 from app.models.user import User
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/dcr", tags=["Dynamic Client Registration"])
 
 @router.post("/register")
 def register_client(
-    current_user: Annotated[User, Depends(get_user_jwt_auth)],
+    current_user: Annotated[User, Depends(get_user_required)],
     oauth_client_service: Annotated[
         IOAuthClientService, Depends(get_oauth_client_service)
     ],

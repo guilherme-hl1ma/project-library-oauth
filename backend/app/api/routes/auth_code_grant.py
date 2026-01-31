@@ -1,13 +1,12 @@
 import json
 import secrets
-from sys import exception
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.core.database import SessionDep
 from app.core.redis_instance import RedisSingleton
-from app.dependencies.auth import get_user_jwt_auth
+from app.dependencies.auth import get_current_user_or_none
 from app.models.oauth_client import OAuthClient
 from app.models.user import User
 from app.schemas.auth_code_grant.auth_code_grant import (
@@ -20,6 +19,12 @@ router = APIRouter(tags=["Authorization Code"])
 redis_client = RedisSingleton().getInstance()
 
 
+def format_url(base_url: str) -> str:
+    if base_url[-1] == "/":
+        base_url = base_url[:-1]
+    return base_url
+
+
 def build_error_url(base_url: str, error: str) -> str:
     return f"{base_url}?error={error}&state=auth_error"
 
@@ -29,11 +34,14 @@ def authorize_client(
     request: Request,
     req_params: Annotated[AuthorizationRequest, Query()],
     session: SessionDep,
-    current_user: Annotated[User, Depends(get_user_jwt_auth)],
+    current_user: Annotated[User, Depends(get_current_user_or_none)],
 ):
     BASE_URL = None
     try:
         CLIENT_ID = None
+
+        if not current_user:
+            return RedirectResponse(url="http://localhost:4000/login")
 
         client_db = session.get(OAuthClient, req_params.client_id)
         if client_db is None:
@@ -62,10 +70,11 @@ def authorize_client(
 
         code = secrets.token_urlsafe(32)
 
+        redirect_uri_formatted = format_url(base_url=req_params.redirect_uri)
         auth_data = {
             "user_id": current_user.id,
             "client_id": client_db.client_id,
-            "redirect_uri": req_params.redirect_uri,
+            "redirect_uri": redirect_uri_formatted,
             "scopes": req_params.scope,
         }
 
@@ -80,9 +89,13 @@ def authorize_client(
             query += f"&state={req_params.state}"
         return RedirectResponse(url=f"{req_params.redirect_uri}?{query}")
     except Exception as e:
+        print(f"Authorize client error: {e}")
         if BASE_URL is not None:
-            return RedirectResponse(
-                f"{build_error_url(base_url=BASE_URL, error="server_error")}"
+            print(f"Redirecting to error URL: {BASE_URL}")
+            return JSONResponse(
+                content={
+                    "redirect_url": f"{build_error_url(base_url=BASE_URL, error="server_error")}"
+                }
             )
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
