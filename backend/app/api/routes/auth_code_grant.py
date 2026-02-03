@@ -10,9 +10,7 @@ from app.dependencies.auth import get_current_user_or_none
 from app.models.oauth_client import OAuthClient
 from app.models.user import User
 from app.schemas.auth_code_grant.auth_code_grant import (
-    AuthorizationCodeError,
     AuthorizationRequest,
-    AuthorizationResponse,
 )
 
 router = APIRouter(tags=["Authorization Code"])
