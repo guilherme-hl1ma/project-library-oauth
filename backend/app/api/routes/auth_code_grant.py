@@ -86,6 +86,8 @@ def authorize_client(
         if req_params.state:
             query += f"&state={req_params.state}"
         return RedirectResponse(url=f"{req_params.redirect_uri}?{query}")
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Authorize client error: {e}")
         if BASE_URL is not None:

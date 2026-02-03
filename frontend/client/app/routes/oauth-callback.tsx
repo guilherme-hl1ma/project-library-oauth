@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import axios from "axios";
 
 export default function OAuthCallback() {
   const [searchParams] = useSearchParams();
@@ -25,12 +24,12 @@ export default function OAuthCallback() {
   const exchangeCodeForToken = async (code) => {
     try {
       // O seu back-end (Client) vai fazer a chamada "escondida" para o Auth Server
-      const response = await axios.post(
-        "http://localhost:8000/api/token-exchange",
-        {
-          code: code,
-        },
-      );
+      // const response = await axios.post(
+      //   "http://localhost:8000/api/token-exchange",
+      //   {
+      //     code: code,
+      //   },
+      // );
 
       // Salva o JWT final que o SEU sistema gerou
       localStorage.setItem("access_token", response.data.access_token);

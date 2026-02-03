@@ -46,11 +46,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.api.routes import dcr, authentication, auth_code_grant
+from app.api.routes import dcr, authentication, auth_code_grant, user
 
 app.include_router(dcr.router)
 app.include_router(authentication.router)
 app.include_router(auth_code_grant.router)
+app.include_router(user.router)
 
 app.add_exception_handler(DomainError, domain_error_handler)
 app.add_exception_handler(ApplicationError, application_error_handler)
