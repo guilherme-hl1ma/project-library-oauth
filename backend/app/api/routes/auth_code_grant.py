@@ -92,11 +92,8 @@ def authorize_client(
         print(f"Authorize client error: {e}")
         if BASE_URL is not None:
             print(f"Redirecting to error URL: {BASE_URL}")
-            return JSONResponse(
-                content={
-                    "redirect_url": f"{build_error_url(base_url=BASE_URL, error="server_error")}"
-                }
-            )
+            error_url = build_error_url(base_url=BASE_URL, error="server_error")
+            return RedirectResponse(url=error_url)
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
         )

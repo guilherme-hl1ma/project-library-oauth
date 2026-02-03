@@ -1,53 +1,34 @@
-import { useEffect } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 
 export default function OAuthCallback() {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [status, setStatus] = useState("Initializing...");
 
   useEffect(() => {
-    const code = searchParams.get("code");
-    const state = searchParams.get("state");
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
 
     if (code) {
-      console.log("Código de autorização recebido:", code);
+      setStatus("Exchanging code for token...");
 
-      // Validação opcional do state (se você salvou no localStorage antes de ir)
-      // if (state !== localStorage.getItem('auth_state')) { ... erro ... }
-
-      // Agora o FRONT do CLIENT envia o código para o BACK do CLIENT
-      // (Não confunda com o Auth Server!)
-      exchangeCodeForToken(code);
+      fetch("http://localhost:8000/token", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          localStorage.setItem("token", data.access_token);
+          navigate("/dashboard");
+        })
+        .catch(() => setStatus("Error during exchange"));
     }
-  }, [searchParams]);
-
-  const exchangeCodeForToken = async (code) => {
-    try {
-      // O seu back-end (Client) vai fazer a chamada "escondida" para o Auth Server
-      // const response = await axios.post(
-      //   "http://localhost:8000/api/token-exchange",
-      //   {
-      //     code: code,
-      //   },
-      // );
-
-      // Salva o JWT final que o SEU sistema gerou
-      localStorage.setItem("access_token", response.data.access_token);
-
-      // Leva o usuário para a área logada
-      navigate("/dashboard");
-    } catch (error) {
-      console.error("Erro na troca do token:", error);
-      navigate("/login?error=failed_exchange");
-    }
-  };
+  }, [navigate]);
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold">Finalizando autenticação...</h2>
-        <p className="text-gray-500">Aguarde um instante.</p>
-      </div>
+    <div className="p-8 text-center">
+      <h1 className="text-xl font-mono">{status}</h1>
+      <div className="animate-spin mt-4">🌀</div>
     </div>
   );
 }
