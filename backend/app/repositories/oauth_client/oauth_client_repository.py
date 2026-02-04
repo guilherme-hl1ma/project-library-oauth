@@ -1,12 +1,14 @@
-from sqlmodel import Session
+from sqlalchemy import update
+from sqlmodel import Session, col, select
 from app.core.bcrypt_encrypter import hash_text
 from app.domain.oauth_client.oauth_client_domain import OAuthClientDomain
 from app.models.oauth_client import OAuthClient
+from app.models.user import User
 from app.models.user_oauth_client import UserOAuthClientModel
 from app.repositories.oauth_client.ioauth_client_repository import (
     IOAuthClientRepository,
 )
-from app.services.exceptions import InternalServerError
+from app.services.exceptions import ForbiddenError, InternalServerError
 
 
 class OAuthClientRepository(IOAuthClientRepository):
@@ -43,3 +45,33 @@ class OAuthClientRepository(IOAuthClientRepository):
             print(e)
             raise InternalServerError("Internal server error")
         return result_domain
+
+    def get_by_id(self, client_id: str) -> OAuthClient | None:
+        try:
+            return self.session.get(OAuthClient, client_id)
+        except Exception as e:
+            print(e)
+            raise InternalServerError("Internal server error")
+
+    def update_secret(self, client_id: str, hashed_secret: str):
+        try:
+            stmt = (
+                update(OAuthClient)
+                .filter_by(client_id=client_id)
+                .values(client_secret=hashed_secret)
+            )
+            self.session.exec(stmt)
+            self.session.commit()
+        except Exception as e:
+            print(e)
+            raise InternalServerError("Internal server error")
+
+    def check_user_permission(self, client_id: str, requested_by: User):
+        stmt = select(UserOAuthClientModel).where(
+            col(UserOAuthClientModel.client_id) == client_id,
+            col(UserOAuthClientModel.user_id) == requested_by.id,
+        )
+
+        result = self.session.exec(stmt).first()
+        if result is None:
+            raise ForbiddenError("User cannot access the client.")

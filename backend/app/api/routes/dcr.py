@@ -37,3 +37,22 @@ def register_client(
     )
 
     return response
+
+
+@router.post("/{client_id}/rotate-secret")
+def rotate_client_secret(
+    client_id: str,
+    current_user: Annotated[User, Depends(get_user_required)],
+    oauth_client_service: Annotated[
+        IOAuthClientService, Depends(get_oauth_client_service)
+    ],
+):
+    new_secret = oauth_client_service.rotate_secret(
+        client_id=client_id,
+        requested_by=current_user,
+    )
+
+    return {
+        "client_id": client_id,
+        "client_secret": new_secret,
+    }

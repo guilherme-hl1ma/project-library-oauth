@@ -2,6 +2,7 @@ from typing import ClassVar
 from sqlalchemy import JSON
 from sqlmodel import Column, Field, SQLModel
 
+from app.core.bcrypt_encrypter import verify_text
 from app.domain.oauth_client.oauth_client_domain import OAuthClientDomain
 
 
@@ -45,3 +46,6 @@ class OAuthClient(SQLModel, table=True):
             software_id=client.software_id,
             is_active=client.is_active,
         )
+
+    def verify_secret(self, plain_secret: str) -> bool:
+        return verify_text(plain_text=plain_secret, hashed_text=self.client_secret)

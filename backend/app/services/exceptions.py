@@ -12,3 +12,9 @@ class ClientNotFound(ApplicationError):
 
 class InternalServerError(Exception):
     pass
+
+
+class ForbiddenError(ApplicationError):
+    def __init__(self, detail: str = "Forbidden"):
+        self.detail = detail
+        super().__init__(detail)

@@ -11,9 +11,14 @@ from app.api.handlers import (
     application_error_handler,
     domain_error_handler,
     unexpected_error_handler,
+    forbidden_error_handler,
 )
 from app.domain.oauth_client.exceptions import DomainError
-from app.services.exceptions import ApplicationError, InternalServerError
+from app.services.exceptions import (
+    ApplicationError,
+    ForbiddenError,
+    InternalServerError,
+)
 
 log = logging.getLogger("uvicorn")
 
@@ -56,3 +61,4 @@ app.include_router(user.router)
 app.add_exception_handler(DomainError, domain_error_handler)
 app.add_exception_handler(ApplicationError, application_error_handler)
 app.add_exception_handler(InternalServerError, unexpected_error_handler)
+app.add_exception_handler(ForbiddenError, forbidden_error_handler)
