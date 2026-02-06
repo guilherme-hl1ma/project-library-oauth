@@ -7,8 +7,10 @@ import {
 } from "@react-router/dev/routes";
 
 export default [
+  // OAuth Flow Routes
   route("/login", "routes/login.tsx"),
-  route("/callback", "routes/oauth-callback.tsx"),
+  route("/oauth/authorize", "routes/oauth-authorize.tsx"),
+  route("/oauth/callback", "routes/oauth-callback.tsx"),
 
   layout("layouts/auth-layout.tsx", [index("routes/home.tsx")]),
 ] satisfies RouteConfig;

@@ -1,67 +1,140 @@
-import React from "react";
+import { useNavigate } from "react-router";
+import { loader as authLoader } from "../layouts/auth-layout";
+import type { Route } from "./+types/home";
 
-export default function Home() {
-  const CLIENT_ID = import.meta.env.VITE_AUTH_CLIENT_ID;
+export const loader = authLoader;
 
-  const AUTH_CONFIG = {
-    url: "http://localhost:8000/authorize",
-    client_id: CLIENT_ID,
-    redirect_uri: "http://localhost:4000/callback",
-    scope: "admin",
-    state: "auth_process_initialization",
-  };
+export function meta({}: Route.MetaArgs) {
+  return [
+    { title: "Home" },
+    { name: "description", content: "Welcome to your dashboard" },
+  ];
+}
 
-  const handleLoginOAuth = () => {
-    try {
-      const token = localStorage.getItem("token");
+export default function Home({ loaderData }: Route.ComponentProps) {
+  const user = loaderData;
+  const navigate = useNavigate();
 
-      const params = new URLSearchParams({
-        response_type: "code",
-        client_id: AUTH_CONFIG.client_id,
-        redirect_uri: AUTH_CONFIG.redirect_uri,
-        scope: AUTH_CONFIG.scope,
-        state: AUTH_CONFIG.state,
-      });
-
-      if (!token) {
-        console.log("No token, redirecting to login");
-        const queryString = new URLSearchParams(params).toString();
-        sessionStorage.setItem("oauth_return_params", `?${queryString}`);
-        window.location.href = "/login";
-        return;
-      }
-
-      const queryString = new URLSearchParams(params).toString();
-      const url = `http://localhost:8000/authorize?${queryString}`;
-
-      window.location.href = url;
-    } catch (err) {
-      console.error(err);
-    }
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    // Also clear any other stored auth data if necessary
+    sessionStorage.removeItem("oauth_return_params");
+    navigate("/login");
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
-        <h1 className="text-2xl font-bold text-gray-800 mb-4">
-          Bem-vindo ao Client App
-        </h1>
-        <p className="text-gray-600 mb-8">
-          Para acessar seus recursos protegidos, precisamos da sua autorização
-          no servidor central.
-        </p>
+    <div style={styles.container}>
+      <div style={styles.card}>
+        <div style={styles.header}>
+          <h1 style={styles.title}>Welcome!</h1>
+          <p style={styles.subtitle}>You are successfully logged in</p>
+        </div>
 
-        <button
-          onClick={handleLoginOAuth}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 ease-in-out transform hover:scale-105"
-        >
-          Autorizar com MyAuth Server
-        </button>
+        <div style={styles.content}>
+          <div style={styles.userInfo}>
+            <div style={styles.avatarPlaceholder}>
+              {user.email ? user.email[0].toUpperCase() : "U"}
+            </div>
+            <div style={styles.userDetails}>
+              <p style={styles.userEmail}>{user.email || "User"}</p>
+              <p style={styles.userId}>ID: {user.id}</p>
+            </div>
+          </div>
 
-        <div className="mt-6 text-sm text-gray-400">
-          Você será redirecionado para o servidor de login com segurança.
+          <button onClick={handleLogout} style={styles.button}>
+            Logout
+          </button>
         </div>
       </div>
     </div>
   );
 }
+
+const styles = {
+  container: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "100vh",
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    padding: "20px",
+  },
+  card: {
+    backgroundColor: "#ffffff",
+    padding: "48px",
+    borderRadius: "16px",
+    boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+    width: "100%",
+    maxWidth: "440px",
+  },
+  header: {
+    marginBottom: "32px",
+    textAlign: "center" as const,
+  },
+  title: {
+    fontSize: "28px",
+    fontWeight: "700",
+    color: "#1a202c",
+    margin: "0 0 8px 0",
+  },
+  subtitle: {
+    fontSize: "14px",
+    color: "#718096",
+    margin: 0,
+  },
+  content: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "24px",
+  },
+  userInfo: {
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    padding: "16px",
+    backgroundColor: "#f7fafc",
+    borderRadius: "12px",
+    border: "1px solid #edf2f7",
+  },
+  avatarPlaceholder: {
+    width: "48px",
+    height: "48px",
+    borderRadius: "50%",
+    backgroundColor: "#667eea",
+    color: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "20px",
+    fontWeight: "600",
+  },
+  userDetails: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "4px",
+  },
+  userEmail: {
+    fontSize: "16px",
+    fontWeight: "600",
+    color: "#2d3748",
+    margin: 0,
+  },
+  userId: {
+    fontSize: "12px",
+    color: "#718096",
+    margin: 0,
+    fontFamily: "monospace",
+  },
+  button: {
+    padding: "14px",
+    backgroundColor: "#DC2626", // Red for logout
+    color: "#ffffff",
+    border: "none",
+    borderRadius: "8px",
+    cursor: "pointer",
+    fontSize: "16px",
+    fontWeight: "600",
+    transition: "all 0.2s",
+    width: "100%",
+  },
+};

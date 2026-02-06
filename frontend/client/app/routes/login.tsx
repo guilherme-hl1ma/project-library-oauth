@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Route } from "./+types/login";
 
 export function meta({}: Route.MetaArgs) {
@@ -15,6 +15,31 @@ export default function Login() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-redirect if already authenticated with Auth Server
+  useEffect(() => {
+    // Check for token in partial implementation (legacy) or full cookie
+    const getCookie = (name: string) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(";").shift();
+      return null;
+    };
+
+    // The backend login sets a session cookie (usually httpOnly).
+    // But our login logic in Step 295 handled 'token' as JSON response and set it to localStorage.
+    // If we want to shift THAT to cookies too:
+    
+    const token = localStorage.getItem("token"); // Legacy logic still uses localStorage for initial auth signal?
+    // User asked "no callback ta procurando no localStorage... não deveria ser cookies?"
+    // User refers to OAuth Tokens. 
+    
+    // For auto-redirect, we can check if we have an access_token cookie?
+    const accessToken = getCookie("access_token");
+    if (accessToken || token) {
+        window.location.href = "/oauth/authorize";
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -39,14 +64,7 @@ export default function Login() {
 
       localStorage.setItem("token", token);
 
-      const returnParams = sessionStorage.getItem("oauth_return_params");
-
-      if (returnParams) {
-        sessionStorage.removeItem("oauth_return_params");
-        window.location.href = "/authorize" + returnParams;
-      } else {
-        window.location.href = "/";
-      }
+      window.location.href = "/oauth/authorize";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       setLoading(false);
