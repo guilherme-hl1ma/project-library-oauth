@@ -321,7 +321,7 @@ def get_access_token(
             refresh_token_data, str(SECRET_JWT), algorithm="HS256"
         )
 
-        return JSONResponse(
+        response = JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
                 "access_token": access_token,
@@ -332,6 +332,24 @@ def get_access_token(
             },
             headers=response_headers,
         )
+
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            samesite="lax",
+            max_age=3600,
+        )
+
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            samesite="lax",
+            max_age=60 * 60 * 24 * 30,  # 30 days
+        )
+
+        return response
 
     except HTTPException as e:
         return JSONResponse(

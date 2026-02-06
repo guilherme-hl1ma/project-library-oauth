@@ -13,7 +13,14 @@ export default function Home() {
 
   const handleLoginOAuth = () => {
     try {
-      const token = localStorage.getItem("token");
+      const getCookie = (name: string) => {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop()?.split(";").shift();
+        return null;
+      };
+
+      const token = getCookie("token");
 
       // Generate random state for CSRF protection
       const state = Math.random().toString(36).substring(7);
@@ -22,18 +29,10 @@ export default function Home() {
       const params = new URLSearchParams({
         response_type: "code",
         client_id: AUTH_CONFIG.client_id,
-        redirect_uri: window.location.origin + "/oauth/callback", // Use dynamic origin
+        redirect_uri: window.location.origin + "/oauth/callback",
         scope: AUTH_CONFIG.scope,
-        state: state, // send generated state
+        state: state,
       });
-
-      if (!token) {
-        console.log("No token, redirecting to login");
-        const queryString = new URLSearchParams(params).toString();
-        sessionStorage.setItem("oauth_return_params", `?${queryString}`);
-        window.location.href = "/login";
-        return;
-      }
 
       const queryString = new URLSearchParams(params).toString();
       const url = `http://localhost:8000/authorize?${queryString}`;

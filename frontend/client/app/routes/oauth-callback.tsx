@@ -15,7 +15,6 @@ export default function OAuthCallback() {
     const errorDescription = params.get("error_description");
     const state = params.get("state");
 
-    // CSRF Check
     const savedState = sessionStorage.getItem("oauth_state");
     if (state !== savedState) {
       setError("Security Error: State mismatch (CSRF protection)");
@@ -24,7 +23,6 @@ export default function OAuthCallback() {
       setCountdown(3);
       return;
     }
-    // Clean up state
     sessionStorage.removeItem("oauth_state");
 
     if (errorParam) {
@@ -92,7 +90,6 @@ export default function OAuthCallback() {
     const clientSecret = import.meta.env.VITE_AUTH_CLIENT_SECRET;
     const credentials = btoa(`${clientId}:${clientSecret}`);
 
-    // Correctly format body as URLSearchParams string for application/x-www-form-urlencoded
     const body = {
       grant_type: "authorization_code",
       code: code,
@@ -106,6 +103,7 @@ export default function OAuthCallback() {
         "Content-Type": "application/json",
         Authorization: `Basic ${credentials}`,
       },
+      credentials: "include",
       body: JSON.stringify(body),
     })
       .then(async (res) => {
@@ -123,29 +121,6 @@ export default function OAuthCallback() {
       })
       .then((data) => {
         setStatus("Success! Redirecting...");
-
-        // Store tokens in cookies (HTTP accessible if needed, but here client-side)
-        // Note: For true security, these should be httpOnly cookies from the backend.
-        // But since we are receiving them in client-side JS, we set them as document.cookie.
-        // We set path=/ so they are available application-wide.
-        
-        const setCookie = (name: string, value: string, maxAge: number) => {
-            document.cookie = `${name}=${value}; path=/; max-age=${maxAge}; SameSite=Lax`;
-        };
-
-        setCookie("access_token", data.access_token, data.expires_in);
-        setCookie("refresh_token", data.refresh_token, 30 * 24 * 60 * 60); // 30 days usually
-        setCookie("scope", data.scope || "", data.expires_in);
-
-        // Remove legacy token if present
-        localStorage.removeItem("token");
-        // Also ensure legacy token cookie is cleaned if it exists there? 
-        // document.cookie = "token=; path=/; max-age=0"; 
-
-        // We don't need dedicated 'token_expires_at' in localStorage if we rely on cookie expiration,
-        // but keeping it for explicit checks if needed. 
-        // For consistency based on user request, let's stick to cookies.
-
         setTimeout(() => navigate("/"), 500);
       })
       .catch((err) => {

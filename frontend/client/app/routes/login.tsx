@@ -16,29 +16,23 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-redirect if already authenticated with Auth Server
   useEffect(() => {
-    // Check for token in partial implementation (legacy) or full cookie
-    const getCookie = (name: string) => {
-      const value = `; ${document.cookie}`;
-      const parts = value.split(`; ${name}=`);
-      if (parts.length === 2) return parts.pop()?.split(";").shift();
-      return null;
+    const checkAuth = async () => {
+      try {
+        const response = await fetch("http://localhost:8000/users/me", {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          window.location.href = "/oauth/authorize";
+        }
+      } catch {
+        // Not authenticated or network error, stay on login page
+      }
     };
 
-    // The backend login sets a session cookie (usually httpOnly).
-    // But our login logic in Step 295 handled 'token' as JSON response and set it to localStorage.
-    // If we want to shift THAT to cookies too:
-    
-    const token = localStorage.getItem("token"); // Legacy logic still uses localStorage for initial auth signal?
-    // User asked "no callback ta procurando no localStorage... não deveria ser cookies?"
-    // User refers to OAuth Tokens. 
-    
-    // For auto-redirect, we can check if we have an access_token cookie?
-    const accessToken = getCookie("access_token");
-    if (accessToken || token) {
-        window.location.href = "/oauth/authorize";
-    }
+    checkAuth();
   }, []);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -61,8 +55,6 @@ export default function Login() {
       const token = await response.json();
 
       console.log("Token received:", token);
-
-      localStorage.setItem("token", token);
 
       window.location.href = "/oauth/authorize";
     } catch (err) {

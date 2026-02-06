@@ -17,7 +17,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    // Also clear any other stored auth data if necessary
     sessionStorage.removeItem("oauth_return_params");
     navigate("/login");
   };
