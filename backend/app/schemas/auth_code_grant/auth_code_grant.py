@@ -61,3 +61,10 @@ class AuthorizationCodeError(BaseModel):
     error_description: str | None
     error_uri: str | None
     state: str | None
+
+
+class AccessTokenRequest(BaseModel):
+    grant_type: str | None
+    code: str | None
+    redirect_uri: str | None
+    client_id: str | None

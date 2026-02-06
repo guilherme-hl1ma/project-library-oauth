@@ -1,20 +1,42 @@
+import base64
 import json
+import os
 import secrets
+from datetime import datetime, timedelta
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Header,
+    Query,
+    Request,
+    status,
+)
 from fastapi.responses import JSONResponse, RedirectResponse
+import jwt
 
 from app.core.database import SessionDep
 from app.core.redis_instance import RedisSingleton
-from app.dependencies.auth import get_current_user_or_none
+from app.dependencies.auth import get_current_user_or_none, get_user_required
 from app.models.oauth_client import OAuthClient
 from app.models.user import User
 from app.schemas.auth_code_grant.auth_code_grant import (
+    AccessTokenRequest,
     AuthorizationRequest,
 )
 
 router = APIRouter(tags=["Authorization Code"])
 redis_client = RedisSingleton().getInstance()
+
+SECRET_JWT = os.getenv("SECRET_JWT")
+JWT_ISSUER = os.getenv("JWT_ISSUER")
+
+
+####################
+# Utility Functions
+####################
 
 
 def format_url(base_url: str) -> str:
@@ -25,6 +47,30 @@ def format_url(base_url: str) -> str:
 
 def build_error_url(base_url: str, error: str) -> str:
     return f"{base_url}?error={error}&state=auth_error"
+
+
+def extract_client_credentials(
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict:
+    if authorization and authorization.startswith("Basic "):
+        try:
+            encoded = authorization.replace("Basic ", "")
+            decoded = base64.b64decode(encoded).decode("utf-8")
+
+            if ":" not in decoded:
+                return {"client_id": None, "client_secret": None}
+
+            client_id, client_secret = decoded.split(":", 1)
+            return {"client_id": client_id, "client_secret": client_secret}
+        except Exception:
+            return {"client_id": None, "client_secret": None}
+
+    return {"client_id": None, "client_secret": None}
+
+
+#####################################
+# Authorization Code Grant Endpoints
+#####################################
 
 
 @router.get(path="/authorize")
@@ -77,7 +123,7 @@ def authorize_client(
         }
 
         redis_client.set(
-            name=f"{current_user.id}:auth_code:{code}",
+            name=f"{client_db.client_id}:auth_code:{code}",
             value=json.dumps(auth_data),
             ex=600,  # RFC 6749 - "A maximum authorization code lifetime of 10 minutes is RECOMMENDED"
         )
@@ -96,4 +142,214 @@ def authorize_client(
             return RedirectResponse(url=error_url)
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
+        )
+
+
+@router.post(path="/token")
+def get_access_token(
+    request: Request,
+    req_params: Annotated[AccessTokenRequest, Body()],
+    session: SessionDep,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    response_headers = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+
+    try:
+        if req_params.grant_type != "authorization_code":
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "unsupported_grant_type",
+                    "error_description": f"Grant type must be 'authorization_code', got '{req_params.grant_type}'",
+                },
+                headers=response_headers,
+            )
+
+        if not req_params.code:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_request",
+                    "error_description": "Missing required parameter: code",
+                },
+                headers=response_headers,
+            )
+
+        if not req_params.redirect_uri:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_request",
+                    "error_description": "Missing required parameter: redirect_uri",
+                },
+                headers=response_headers,
+            )
+
+        auth_credentials = extract_client_credentials(authorization)
+        client_id = auth_credentials["client_id"] or req_params.client_id
+        client_secret = auth_credentials["client_secret"]
+
+        if not client_id:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "error": "invalid_client",
+                    "error_description": "Client authentication required",
+                },
+                headers={
+                    **response_headers,
+                    "WWW-Authenticate": 'Basic realm="OAuth2"',
+                },
+            )
+
+        client = session.get(OAuthClient, client_id)
+
+        if not client:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "error": "invalid_client",
+                    "error_description": "Client not found",
+                },
+                headers={
+                    **response_headers,
+                    "WWW-Authenticate": 'Basic realm="OAuth2"',
+                },
+            )
+
+        if not client.is_active:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "error": "invalid_client",
+                    "error_description": "Client is inactive",
+                },
+                headers={
+                    **response_headers,
+                    "WWW-Authenticate": 'Basic realm="OAuth2"',
+                },
+            )
+
+        if client_secret and not client.verify_secret(client_secret):
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "error": "invalid_client",
+                    "error_description": "Invalid client credentials",
+                },
+                headers={
+                    **response_headers,
+                    "WWW-Authenticate": 'Basic realm="OAuth2"',
+                },
+            )
+
+        redis_key = f"{client.client_id}:auth_code:{req_params.code}"
+        auth_code_data = redis_client.get(redis_key)
+
+        if not auth_code_data:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_grant",
+                    "error_description": "Authorization code not found or has expired",
+                },
+                headers=response_headers,
+            )
+
+        try:
+            auth_data = json.loads(str(auth_code_data))
+        except json.JSONDecodeError:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_grant",
+                    "error_description": "Invalid authorization code format",
+                },
+                headers=response_headers,
+            )
+
+        if auth_data.get("client_id") != client.client_id:
+            redis_client.delete(redis_key)
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_grant",
+                    "error_description": "Authorization code was issued to a different client",
+                },
+                headers=response_headers,
+            )
+
+        redirect_uri_formatted = format_url(base_url=req_params.redirect_uri)
+        if auth_data.get("redirect_uri") != redirect_uri_formatted:
+            redis_client.delete(redis_key)
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_grant",
+                    "error_description": "Redirect URI does not match authorization request",
+                },
+                headers=response_headers,
+            )
+
+        redis_client.delete(redis_key)
+
+        user_id = auth_data.get("user_id")
+        scopes = auth_data.get("scopes", "")
+
+        access_token_data = {
+            "sub": str(user_id),
+            "client_id": client.client_id,
+            "scope": scopes,
+            "exp": datetime.utcnow() + timedelta(hours=1),
+            "iat": datetime.utcnow(),
+            "iss": JWT_ISSUER,
+            "token_type": "access_token",
+        }
+
+        refresh_token_data = {
+            "sub": str(user_id),
+            "client_id": client.client_id,
+            "scope": scopes,
+            "exp": datetime.utcnow() + timedelta(days=30),
+            "iat": datetime.utcnow(),
+            "iss": JWT_ISSUER,
+            "token_type": "refresh_token",
+        }
+
+        access_token = jwt.encode(access_token_data, str(SECRET_JWT), algorithm="HS256")
+        refresh_token = jwt.encode(
+            refresh_token_data, str(SECRET_JWT), algorithm="HS256"
+        )
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "access_token": access_token,
+                "token_type": "Bearer",
+                "expires_in": 3600,
+                "refresh_token": refresh_token,
+                "scope": scopes,
+            },
+            headers=response_headers,
+        )
+
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={"error": "invalid_request", "error_description": e.detail},
+            headers=response_headers,
+        )
+
+    except Exception as e:
+        print(f"Unexpected error in token endpoint: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "error": "server_error",
+                "error_description": "An unexpected error occurred",
+            },
+            headers=response_headers,
         )
