@@ -68,3 +68,9 @@ class AccessTokenRequest(BaseModel):
     code: str | None
     redirect_uri: str | None
     client_id: str | None
+
+
+class RefreshTokenRequest(BaseModel):
+    grant_type: str | None
+    refresh_token: str | None
+    scope: str | None = None  # Optional: client may request reduced scope

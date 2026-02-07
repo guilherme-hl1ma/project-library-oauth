@@ -25,6 +25,7 @@ from app.models.user import User
 from app.schemas.auth_code_grant.auth_code_grant import (
     AccessTokenRequest,
     AuthorizationRequest,
+    RefreshTokenRequest,
 )
 
 router = APIRouter(tags=["Authorization Code"])
@@ -303,7 +304,7 @@ def get_access_token(
             "exp": datetime.utcnow() + timedelta(hours=1),
             "iat": datetime.utcnow(),
             "iss": JWT_ISSUER,
-            "token_type": "access_token",
+            "token_type": "bearer",
         }
 
         refresh_token_data = {
@@ -313,7 +314,7 @@ def get_access_token(
             "exp": datetime.utcnow() + timedelta(days=30),
             "iat": datetime.utcnow(),
             "iss": JWT_ISSUER,
-            "token_type": "refresh_token",
+            "token_type": "bearer",
         }
 
         access_token = jwt.encode(access_token_data, str(SECRET_JWT), algorithm="HS256")
@@ -360,6 +361,218 @@ def get_access_token(
 
     except Exception as e:
         print(f"Unexpected error in token endpoint: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "error": "server_error",
+                "error_description": "An unexpected error occurred",
+            },
+            headers=response_headers,
+        )
+
+
+@router.post(path="/token/refresh")
+def refresh_access_token(
+    request: Request,
+    req_params: Annotated[RefreshTokenRequest, Body()],
+    session: SessionDep,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    response_headers = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+
+    try:
+        if req_params.grant_type != "refresh_token":
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "unsupported_grant_type",
+                    "error_description": f"Grant type must be 'refresh_token', got '{req_params.grant_type}'",
+                },
+                headers=response_headers,
+            )
+
+        refresh_token = req_params.refresh_token or request.cookies.get("refresh_token")
+
+        if not refresh_token:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_request",
+                    "error_description": "Missing required parameter: refresh_token",
+                },
+                headers=response_headers,
+            )
+
+        try:
+            refresh_token_data = jwt.decode(
+                refresh_token,
+                str(SECRET_JWT),
+                algorithms=["HS256"],
+                issuer=JWT_ISSUER,
+            )
+        except jwt.ExpiredSignatureError:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_grant",
+                    "error_description": "Refresh token has expired",
+                },
+                headers=response_headers,
+            )
+        except jwt.InvalidTokenError as e:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_grant",
+                    "error_description": f"Invalid refresh token: {str(e)}",
+                },
+                headers=response_headers,
+            )
+
+        user_id = refresh_token_data.get("sub")
+        client_id = refresh_token_data.get("client_id")
+        original_scopes = refresh_token_data.get("scope", "")
+
+        if not user_id or not client_id:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_grant",
+                    "error_description": "Refresh token is missing required claims",
+                },
+                headers=response_headers,
+            )
+
+        client = session.get(OAuthClient, client_id)
+
+        if not client:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "error": "invalid_client",
+                    "error_description": "Client not found",
+                },
+                headers={
+                    **response_headers,
+                    "WWW-Authenticate": 'Basic realm="OAuth2"',
+                },
+            )
+
+        if not client.is_active:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "error": "invalid_client",
+                    "error_description": "Client is inactive",
+                },
+                headers={
+                    **response_headers,
+                    "WWW-Authenticate": 'Basic realm="OAuth2"',
+                },
+            )
+
+        auth_credentials = extract_client_credentials(authorization)
+        if auth_credentials["client_secret"]:
+            if not client.verify_secret(auth_credentials["client_secret"]):
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={
+                        "error": "invalid_client",
+                        "error_description": "Invalid client credentials",
+                    },
+                    headers={
+                        **response_headers,
+                        "WWW-Authenticate": 'Basic realm="OAuth2"',
+                    },
+                )
+
+        scopes = original_scopes
+        if req_params.scope:
+            requested_scopes = set(req_params.scope.split())
+            original_scope_set = (
+                set(original_scopes.split()) if original_scopes else set()
+            )
+
+            if not requested_scopes.issubset(original_scope_set):
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "error": "invalid_scope",
+                        "error_description": "Requested scope exceeds original grant scope",
+                    },
+                    headers=response_headers,
+                )
+            scopes = req_params.scope
+
+        new_access_token_data = {
+            "sub": str(user_id),
+            "client_id": client.client_id,
+            "scope": scopes,
+            "exp": datetime.utcnow() + timedelta(hours=1),
+            "iat": datetime.utcnow(),
+            "iss": JWT_ISSUER,
+            "token_type": "bearer",
+        }
+
+        new_refresh_token_data = {
+            "sub": str(user_id),
+            "client_id": client.client_id,
+            "scope": original_scopes,
+            "exp": datetime.utcnow() + timedelta(days=30),
+            "iat": datetime.utcnow(),
+            "iss": JWT_ISSUER,
+            "token_type": "bearer",
+        }
+
+        new_access_token = jwt.encode(
+            new_access_token_data, str(SECRET_JWT), algorithm="HS256"
+        )
+        new_refresh_token = jwt.encode(
+            new_refresh_token_data, str(SECRET_JWT), algorithm="HS256"
+        )
+
+        response = JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "access_token": new_access_token,
+                "token_type": "Bearer",
+                "expires_in": 3600,
+                "refresh_token": new_refresh_token,
+                "scope": scopes,
+            },
+            headers=response_headers,
+        )
+
+        response.set_cookie(
+            key="access_token",
+            value=new_access_token,
+            httponly=True,
+            samesite="lax",
+            max_age=3600,
+        )
+
+        response.set_cookie(
+            key="refresh_token",
+            value=new_refresh_token,
+            httponly=True,
+            samesite="lax",
+            max_age=60 * 60 * 24 * 30,
+        )
+
+        return response
+
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={"error": "invalid_request", "error_description": e.detail},
+            headers=response_headers,
+        )
+
+    except Exception as e:
+        print(f"Unexpected error in refresh token endpoint: {e}")
         import traceback
 
         traceback.print_exc()
