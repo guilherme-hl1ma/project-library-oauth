@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { apiFetch } from "../controllers/api";
 import type { Route } from "./+types/login";
 
 export function meta({}: Route.MetaArgs) {
@@ -19,13 +20,12 @@ export default function Login() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch("http://localhost:8000/users/me", {
+        const response = await apiFetch("/users/me", {
           method: "GET",
-          credentials: "include",
-        });
+        }, false);
 
         if (response.ok) {
-          window.location.href = "/oauth/authorize";
+          window.location.href = "/";
         }
       } catch {
         // Not authenticated or network error, stay on login page
@@ -56,7 +56,7 @@ export default function Login() {
 
       console.log("Token received:", token);
 
-      window.location.href = "/oauth/authorize";
+      window.location.href = "/";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       setLoading(false);

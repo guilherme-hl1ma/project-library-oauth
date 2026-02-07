@@ -2,13 +2,15 @@ from datetime import datetime, timedelta, timezone
 import os
 import uuid
 import traceback
+from typing import Annotated
 from fastapi.responses import JSONResponse
 from sqlmodel import select
 import jwt
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.database import SessionDep
 from app.core.bcrypt_encrypter import hash_text, verify_text
+from app.dependencies.auth import get_user_from_access_token
 from app.models.user import UserRole, User
 from app.schemas.user.user import UserLogin, UserRegistration
 
@@ -147,3 +149,35 @@ def login(user: UserLogin, session: SessionDep):
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
         )
+
+
+@router.get("/me")
+def me(
+    current_user: Annotated[User, Depends(get_user_from_access_token)],
+):
+    try:
+        return {
+            "id": str(current_user.id),
+            "email": current_user.email,
+            "role": current_user.role,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Auth me error: {e}")
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal Server Error"}
+        )
+
+
+@router.post("/logout")
+def logout():
+    response = JSONResponse(
+        status_code=200, content={"message": "Logged out successfully"}
+    )
+
+    response.delete_cookie(key="token", samesite="lax")
+    response.delete_cookie(key="access_token", samesite="lax")
+    response.delete_cookie(key="refresh_token", samesite="lax")
+
+    return response

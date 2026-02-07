@@ -2,18 +2,16 @@ import { redirect, type LoaderFunctionArgs } from "react-router-dom";
 import { apiFetch } from "~/controllers/api";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-
   const cookieHeader = request.headers.get("Cookie");
 
-  const response = await apiFetch("/users/me", {
+  const response = await apiFetch("/auth/me", {
     headers: {
       Cookie: cookieHeader || "",
     },
   });
 
   if (response.status === 401) {
-    const url = new URL(request.url);
-    throw redirect(`/login?next=${encodeURIComponent(url.pathname)}`);
+    throw redirect("/oauth/authorize");
   }
 
   return response.json();

@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
 import { loader as authLoader } from "../layouts/auth-layout";
+import { apiFetch } from "~/controllers/api";
 import type { Route } from "./+types/home";
 
 export const loader = authLoader;
@@ -15,8 +16,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const user = loaderData;
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
+  const handleLogout = async () => {
+    await apiFetch("/auth/logout", { method: "POST" }, false);
     sessionStorage.removeItem("oauth_return_params");
     navigate("/login");
   };
