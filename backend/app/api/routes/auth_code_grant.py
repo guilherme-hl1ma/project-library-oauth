@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import os
 import urllib.parse
@@ -75,9 +76,22 @@ def extract_client_credentials(
     return {"client_id": None, "client_secret": None}
 
 
-def _generate_tokens(user_id: str, client_id: str, scopes: str) -> dict:
-    """Generate access_token and refresh_token pair."""
+def _verify_pkce(code_verifier: str, code_challenge: str, method: str = "S256") -> bool:
+    """Verify PKCE code_verifier against stored code_challenge (RFC 7636)."""
+    if method == "S256":
+        digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+        computed = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+        return computed == code_challenge
+    elif method == "plain":
+        return code_verifier == code_challenge
+    return False
+
+
+def _generate_tokens(user_id: str, client_id: str, scopes: str, session: SessionDep) -> dict:
+    """Generate access_token, refresh_token, and optional id_token."""
     now = datetime.now(timezone.utc)
+    scope_list = (scopes or "").split()
+    is_oidc = "openid" in scope_list
 
     access_token_data = {
         "sub": str(user_id),
@@ -102,24 +116,47 @@ def _generate_tokens(user_id: str, client_id: str, scopes: str) -> dict:
     access_token = jwt.encode(access_token_data, str(SECRET_JWT), algorithm="HS256")
     refresh_token = jwt.encode(refresh_token_data, str(SECRET_JWT), algorithm="HS256")
 
-    return {
+    tokens = {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "scopes": scopes,
     }
 
+    if is_oidc:
+        user = session.get(User, user_id)
+        if user:
+            id_token_data = {
+                "iss": JWT_ISSUER,
+                "sub": str(user_id),
+                "aud": client_id,
+                "exp": now + timedelta(hours=1),
+                "iat": now,
+                "email": user.email,
+                "role": user.role,
+            }
+            tokens["id_token"] = jwt.encode(
+                id_token_data, str(SECRET_JWT), algorithm="HS256"
+            )
+
+    return tokens
+
 
 def _build_token_response(tokens: dict, response_headers: dict) -> JSONResponse:
-    """Build the standard OAuth token response with cookies."""
+    """Build the standard OAuth/OIDC token response with cookies."""
+    content = {
+        "access_token": tokens["access_token"],
+        "token_type": "Bearer",
+        "expires_in": 3600,
+        "refresh_token": tokens["refresh_token"],
+        "scope": tokens["scopes"],
+    }
+
+    if "id_token" in tokens:
+        content["id_token"] = tokens["id_token"]
+
     response = JSONResponse(
         status_code=status.HTTP_200_OK,
-        content={
-            "access_token": tokens["access_token"],
-            "token_type": "Bearer",
-            "expires_in": 3600,
-            "refresh_token": tokens["refresh_token"],
-            "scope": tokens["scopes"],
-        },
+        content=content,
         headers=response_headers,
     )
 
@@ -138,6 +175,15 @@ def _build_token_response(tokens: dict, response_headers: dict) -> JSONResponse:
         samesite="lax",
         max_age=60 * 60 * 24 * 30,  # 30 days
     )
+
+    if "id_token" in tokens:
+        response.set_cookie(
+            key="id_token",
+            value=tokens["id_token"],
+            httponly=False,  # Frontend needs to read this
+            samesite="lax",
+            max_age=3600,
+        )
 
     return response
 
@@ -219,6 +265,8 @@ def authorize_client(
                         "client_id": client_db.client_id,
                         "redirect_uri": redirect_uri_formatted,
                         "scopes": scopes or "",
+                        "code_challenge": req_params.code_challenge or "",
+                        "code_challenge_method": req_params.code_challenge_method or "S256",
                     }
                     redis_client.set(
                         name=f"{client_db.client_id}:auth_code:{code}",
@@ -241,6 +289,8 @@ def authorize_client(
             "redirect_uri": redirect_uri_formatted,
             "scopes": scopes or "",
             "state": req_params.state or "",
+            "code_challenge": req_params.code_challenge or "",
+            "code_challenge_method": req_params.code_challenge_method or "S256",
         }
 
         redis_client.set(
@@ -354,6 +404,8 @@ def handle_consent(
         "client_id": consent_data.get("client_id"),
         "redirect_uri": redirect_uri,
         "scopes": final_scopes,
+        "code_challenge": consent_data.get("code_challenge", ""),
+        "code_challenge_method": consent_data.get("code_challenge_method", "S256"),
     }
 
     redis_client.set(
@@ -514,10 +566,33 @@ def _handle_authorization_code_grant(
 
     redis_client.delete(redis_key)
 
+    # PKCE verification (RFC 7636)
+    code_challenge = auth_data.get("code_challenge", "")
+    if code_challenge:
+        if not req_params.code_verifier:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_request",
+                    "error_description": "PKCE code_verifier is required",
+                },
+                headers=response_headers,
+            )
+        method = auth_data.get("code_challenge_method", "S256")
+        if not _verify_pkce(req_params.code_verifier, code_challenge, method):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "invalid_grant",
+                    "error_description": "PKCE verification failed",
+                },
+                headers=response_headers,
+            )
+
     user_id = auth_data.get("user_id")
     scopes = auth_data.get("scopes", "")
 
-    tokens = _generate_tokens(user_id, client.client_id, scopes)
+    tokens = _generate_tokens(user_id, client.client_id, scopes, session)
     return _build_token_response(tokens, response_headers)
 
 
@@ -642,7 +717,7 @@ def _handle_refresh_token_grant(
             )
         scopes = req_params.scope
 
-    tokens = _generate_tokens(user_id, client.client_id, scopes)
+    tokens = _generate_tokens(user_id, client.client_id, scopes, session)
     return _build_token_response(tokens, response_headers)
 
 
@@ -736,6 +811,7 @@ def revoke_tokens():
 
     response.delete_cookie(key="access_token", samesite="lax")
     response.delete_cookie(key="refresh_token", samesite="lax")
+    response.delete_cookie(key="id_token", samesite="lax")
     response.delete_cookie(key="token", samesite="lax")
 
     return response
@@ -773,5 +849,33 @@ def revoke_consent(
 
     response.delete_cookie(key="access_token", samesite="lax")
     response.delete_cookie(key="refresh_token", samesite="lax")
+    response.delete_cookie(key="id_token", samesite="lax")
 
     return response
+
+
+#####################################
+# OIDC Discovery
+#####################################
+
+
+@router.get("/.well-known/openid-configuration", include_in_schema=False)
+def openid_configuration(request: Request):
+    """
+    OIDC Discovery endpoint.
+    Provides metadata about the OpenID Connect provider.
+    """
+    base_url = str(request.base_url).rstrip("/")
+    return {
+        "issuer": JWT_ISSUER,
+        "authorization_endpoint": f"{base_url}/authorize",
+        "token_endpoint": f"{base_url}/token",
+        "userinfo_endpoint": f"{base_url}/auth/userinfo",
+        "jwks_uri": f"{base_url}/.well-known/jwks.json",  # Placeholder if you add JWKS later
+        "response_types_supported": ["code"],
+        "subject_types_supported": ["public"],
+        "id_token_signing_alg_values_supported": ["HS256"],
+        "scopes_supported": ["openid", "profile", "email", "read", "create", "update", "delete"],
+        "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
+        "claims_supported": ["sub", "iss", "auth_time", "name", "email", "role"],
+    }

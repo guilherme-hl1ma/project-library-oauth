@@ -1,15 +1,42 @@
 import { useState } from "react";
 
-const REQUESTED_SCOPES = ["read", "create", "update", "delete"];
+const REQUESTED_SCOPES = ["openid", "read", "create", "update", "delete"];
+
+// PKCE helpers
+function generateCodeVerifier(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return base64UrlEncode(array);
+}
+
+function base64UrlEncode(buffer: Uint8Array): string {
+  let str = "";
+  for (const byte of buffer) {
+    str += String.fromCharCode(byte);
+  }
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(digest));
+}
 
 export default function OAuthAuthorize() {
   const CLIENT_ID = import.meta.env.VITE_AUTH_CLIENT_ID;
   const [error, setError] = useState<string | null>(null);
 
-  const handleLoginOAuth = () => {
+  const handleLoginOAuth = async () => {
     try {
       const state = crypto.randomUUID();
       sessionStorage.setItem("oauth_state", state);
+
+      // PKCE: generate code_verifier and code_challenge
+      const codeVerifier = generateCodeVerifier();
+      const codeChallenge = await generateCodeChallenge(codeVerifier);
+      sessionStorage.setItem("pkce_code_verifier", codeVerifier);
 
       const params = new URLSearchParams({
         response_type: "code",
@@ -17,6 +44,8 @@ export default function OAuthAuthorize() {
         redirect_uri: window.location.origin + "/oauth/callback",
         scope: REQUESTED_SCOPES.join(" "),
         state: state,
+        code_challenge: codeChallenge,
+        code_challenge_method: "S256",
       });
 
       const url = `http://localhost:8000/authorize?${params.toString()}`;

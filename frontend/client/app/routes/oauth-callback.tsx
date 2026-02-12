@@ -87,21 +87,31 @@ export default function OAuthCallback() {
     setStatus("Exchanging code for token...");
 
     const clientId = import.meta.env.VITE_AUTH_CLIENT_ID;
-    const clientSecret = import.meta.env.VITE_AUTH_CLIENT_SECRET;
-    const credentials = btoa(`${clientId}:${clientSecret}`);
+
+    // PKCE: retrieve the code_verifier generated before the authorization request
+    const codeVerifier = sessionStorage.getItem("pkce_code_verifier");
+    sessionStorage.removeItem("pkce_code_verifier");
+
+    if (!codeVerifier) {
+      setError("PKCE Error: code_verifier not found. Please restart the flow.");
+      setStatus("Authorization failed");
+      setRedirectPath("/oauth/authorize");
+      setCountdown(3);
+      return;
+    }
 
     const body = {
       grant_type: "authorization_code",
       code: code,
       redirect_uri: window.location.origin + "/oauth/callback",
       client_id: clientId,
+      code_verifier: codeVerifier,
     };
 
     fetch("http://localhost:8000/token", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Basic ${credentials}`,
       },
       credentials: "include",
       body: JSON.stringify(body),

@@ -190,7 +190,7 @@ def userinfo(
     """
     try:
         return {
-            "id": str(current_user.id),
+            "sub": str(current_user.id),
             "email": current_user.email,
             "role": current_user.role,
         }

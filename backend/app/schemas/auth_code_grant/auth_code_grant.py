@@ -7,6 +7,9 @@ class AuthorizationRequest(BaseModel):
     redirect_uri: str | None
     scope: list[str] | None
     state: str | None
+    # PKCE (RFC 7636)
+    code_challenge: str | None = None
+    code_challenge_method: str | None = None
 
 
 class AuthorizationResponse(BaseModel):
@@ -87,6 +90,8 @@ class TokenRequest(BaseModel):
     code: str | None = None
     redirect_uri: str | None = None
     client_id: str | None = None
+    # PKCE (RFC 7636)
+    code_verifier: str | None = None
     # For refresh_token grant
     refresh_token: str | None = None
     scope: str | None = None
