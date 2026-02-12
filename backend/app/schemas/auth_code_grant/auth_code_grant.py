@@ -74,3 +74,19 @@ class RefreshTokenRequest(BaseModel):
     grant_type: str | None
     refresh_token: str | None
     scope: str | None = None  # Optional: client may request reduced scope
+
+
+class TokenRequest(BaseModel):
+    """
+    Unified token request that handles both grant types on /token:
+    - grant_type=authorization_code: requires code, redirect_uri, client_id
+    - grant_type=refresh_token: requires refresh_token, optionally scope
+    """
+    grant_type: str | None = None
+    # For authorization_code grant
+    code: str | None = None
+    redirect_uri: str | None = None
+    client_id: str | None = None
+    # For refresh_token grant
+    refresh_token: str | None = None
+    scope: str | None = None

@@ -11,7 +11,7 @@ async function refreshAccessToken(): Promise<boolean> {
   isRefreshing = true;
   refreshPromise = (async () => {
     try {
-      const response = await fetch(`${BASE_URL}/token/refresh`, {
+      const response = await fetch(`${BASE_URL}/token`, {
         method: "POST",
         credentials: "include",
         headers: {

@@ -45,18 +45,19 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4000"],
+    allow_origins=["http://localhost:4000", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from app.api.routes import dcr, authentication, auth_code_grant, user
+from app.api.routes import dcr, authentication, auth_code_grant, user, project
 
 app.include_router(dcr.router)
 app.include_router(authentication.router)
 app.include_router(auth_code_grant.router)
 app.include_router(user.router)
+app.include_router(project.router)
 
 app.add_exception_handler(DomainError, domain_error_handler)
 app.add_exception_handler(ApplicationError, application_error_handler)

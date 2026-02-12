@@ -1,39 +1,19 @@
-import { useState, useEffect } from "react";
-import { apiFetch } from "../controllers/api";
+import { useState } from "react";
 import type { Route } from "./+types/login";
+
+const AUTH_SERVER_URL = "http://localhost:8000";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Login" },
-    { name: "description", content: "Login to your account" },
+    { title: "Login - Auth Server" },
+    { name: "description", content: "Sign in to your account" },
   ];
 }
 
 export default function Login() {
-  const [credentials, setCredentials] = useState({
-    email: "",
-    password: "",
-  });
+  const [credentials, setCredentials] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await apiFetch("/users/me", {
-          method: "GET",
-        }, false);
-
-        if (response.ok) {
-          window.location.href = "/";
-        }
-      } catch {
-        // Not authenticated or network error, stay on login page
-      }
-    };
-
-    checkAuth();
-  }, []);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -41,7 +21,7 @@ export default function Login() {
     setError(null);
 
     try {
-      const response = await fetch("http://localhost:8000/auth/login", {
+      const response = await fetch(`${AUTH_SERVER_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(credentials),
@@ -49,14 +29,21 @@ export default function Login() {
       });
 
       if (!response.ok) {
-        throw new Error("Login failed");
+        const data = await response.json();
+        throw new Error(data.detail || "Login failed");
       }
 
-      const token = await response.json();
+      const params = new URLSearchParams(window.location.search);
+      const returnTo = params.get("return_to");
+      const oauthParams = params.get("oauth_params");
 
-      console.log("Token received:", token);
-
-      window.location.href = "/";
+      if (returnTo && oauthParams) {
+        window.location.href = `${AUTH_SERVER_URL}${returnTo}?${oauthParams}`;
+      } else if (returnTo) {
+        window.location.href = returnTo;
+      } else {
+        window.location.href = "/";
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       setLoading(false);
@@ -67,25 +54,14 @@ export default function Login() {
     <div style={styles.container}>
       <div style={styles.card}>
         <div style={styles.header}>
-          <h1 style={styles.title}>Welcome Back</h1>
-          <p style={styles.subtitle}>Sign in to your account</p>
+          <div style={styles.lockIcon}>🔐</div>
+          <h1 style={styles.title}>Auth Server</h1>
+          <p style={styles.subtitle}>Sign in to continue</p>
         </div>
 
         {error && (
           <div style={styles.errorBox}>
-            <svg
-              style={styles.errorIcon}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <span style={styles.errorEmoji}>⚠️</span>
             <p style={styles.errorText}>{error}</p>
           </div>
         )}
@@ -94,6 +70,7 @@ export default function Login() {
           <div style={styles.inputGroup}>
             <label style={styles.label}>Email</label>
             <input
+              type="email"
               placeholder="you@example.com"
               value={credentials.email}
               onChange={(e) =>
@@ -126,14 +103,7 @@ export default function Login() {
             }}
             disabled={loading}
           >
-            {loading ? (
-              <span style={styles.buttonContent}>
-                <span style={styles.spinner}></span>
-                Signing in...
-              </span>
-            ) : (
-              "Sign in"
-            )}
+            {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
       </div>
@@ -141,32 +111,38 @@ export default function Login() {
   );
 }
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
   container: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     minHeight: "100vh",
-    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    background:
+      "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
     padding: "20px",
+    fontFamily: "'Inter', sans-serif",
   },
   card: {
-    backgroundColor: "#ffffff", // Forçar branco
+    backgroundColor: "#ffffff",
     padding: "48px",
-    borderRadius: "16px",
-    boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+    borderRadius: "24px",
+    boxShadow: "0 25px 80px rgba(0, 0, 0, 0.4)",
     width: "100%",
     maxWidth: "440px",
   },
   header: {
+    textAlign: "center",
     marginBottom: "32px",
-    textAlign: "center" as const,
+  },
+  lockIcon: {
+    fontSize: "48px",
+    marginBottom: "12px",
   },
   title: {
     fontSize: "28px",
-    fontWeight: "700",
-    color: "#1a202c", // Forçar texto escuro
-    margin: "0 0 8px 0",
+    fontWeight: "800",
+    color: "#1a202c",
+    margin: "0 0 6px 0",
   },
   subtitle: {
     fontSize: "14px",
@@ -176,17 +152,15 @@ const styles = {
   errorBox: {
     backgroundColor: "#FEE2E2",
     border: "1px solid #FCA5A5",
-    borderRadius: "8px",
-    padding: "12px",
+    borderRadius: "10px",
+    padding: "12px 16px",
     marginBottom: "24px",
     display: "flex",
     alignItems: "center",
-    gap: "12px",
+    gap: "10px",
   },
-  errorIcon: {
-    width: "20px",
-    height: "20px",
-    color: "#DC2626",
+  errorEmoji: {
+    fontSize: "18px",
     flexShrink: 0,
   },
   errorText: {
@@ -196,58 +170,45 @@ const styles = {
   },
   form: {
     display: "flex",
-    flexDirection: "column" as const,
+    flexDirection: "column",
     gap: "20px",
   },
   inputGroup: {
     display: "flex",
-    flexDirection: "column" as const,
+    flexDirection: "column",
     gap: "8px",
   },
   label: {
     fontSize: "14px",
-    fontWeight: "500",
-    color: "#374151", // Forçar texto escuro
+    fontWeight: "600",
+    color: "#374151",
   },
   input: {
     padding: "12px 16px",
     border: "2px solid #e5e7eb",
-    borderRadius: "8px",
+    borderRadius: "10px",
     fontSize: "16px",
     transition: "all 0.2s",
     outline: "none",
-    backgroundColor: "#ffffff", // Forçar fundo branco
-    color: "#1a202c", // Forçar texto escuro
+    backgroundColor: "#ffffff",
+    color: "#1a202c",
   },
   button: {
     padding: "14px",
-    backgroundColor: "#667eea",
-    color: "#ffffff", // Forçar texto branco no botão
+    backgroundColor: "#4c51bf",
+    color: "#ffffff",
     border: "none",
-    borderRadius: "8px",
+    borderRadius: "12px",
     cursor: "pointer",
     fontSize: "16px",
-    fontWeight: "600",
+    fontWeight: "700",
     transition: "all 0.2s",
     marginTop: "8px",
+    boxShadow: "0 8px 15px -3px rgba(76, 81, 191, 0.4)",
   },
   buttonDisabled: {
     backgroundColor: "#9ca3af",
     cursor: "not-allowed",
-  },
-  buttonContent: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-  },
-  spinner: {
-    width: "16px",
-    height: "16px",
-    border: "2px solid #ffffff40",
-    borderTop: "2px solid #ffffff",
-    borderRadius: "50%",
-    display: "inline-block",
-    animation: "spin 1s linear infinite",
+    boxShadow: "none",
   },
 };

@@ -8,7 +8,7 @@ import {
 
 export default [
   // OAuth Flow Routes
-  route("/login", "routes/login.tsx"),
+  route("/forgot-password", "routes/forgot-password.tsx"),
   route("/oauth/authorize", "routes/oauth-authorize.tsx"),
   route("/oauth/callback", "routes/oauth-callback.tsx"),
 

@@ -4,7 +4,7 @@ import { apiFetch } from "~/controllers/api";
 export async function loader({ request }: LoaderFunctionArgs) {
   const cookieHeader = request.headers.get("Cookie");
 
-  const response = await apiFetch("/auth/me", {
+  const response = await apiFetch("/auth/userinfo", {
     headers: {
       Cookie: cookieHeader || "",
     },

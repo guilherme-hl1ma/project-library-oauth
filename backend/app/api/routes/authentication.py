@@ -10,7 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.database import SessionDep
 from app.core.bcrypt_encrypter import hash_text, verify_text
-from app.dependencies.auth import get_user_from_access_token
+from app.dependencies.auth import (
+    get_user_required,
+    get_user_from_access_token,
+)
 from app.models.user import UserRole, User
 from app.schemas.user.user import UserLogin, UserRegistration
 
@@ -73,18 +76,16 @@ def signup_jwt(user: UserRegistration, session: SessionDep):
 
         return response
     except HTTPException as e:
-        print("[signup_jwt - signup_session] HTTPException:", str(e))
-        traceback.print_exc()
-        return JSONResponse(
-            status_code=500, content={"detail": "Internal Server Error"}
-        )
+        return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
     except TypeError as e:
         print("[signup_jwt - signup_session] TypeError:", str(e))
+        traceback.print_exc()
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
         )
     except Exception as e:
         print("[signup_jwt - signup_session] Error:", str(e))
+        traceback.print_exc()
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
         )
@@ -144,8 +145,11 @@ def login(user: UserLogin, session: SessionDep):
         )
 
         return response
-    except (Exception, HTTPException) as e:
+    except HTTPException as e:
+        return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
+    except Exception as e:
         print("[jwt_auth - login] Error:", e)
+        traceback.print_exc()
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
         )
@@ -153,8 +157,13 @@ def login(user: UserLogin, session: SessionDep):
 
 @router.get("/me")
 def me(
-    current_user: Annotated[User, Depends(get_user_from_access_token)],
+    current_user: Annotated[User, Depends(get_user_required)],
 ):
+    """
+    Auth Server session endpoint.
+    Uses the 'token' cookie (auth server session) to identify the user.
+    This is for the Auth Server's own use (e.g., consent screen, auth-frontend).
+    """
     try:
         return {
             "id": str(current_user.id),
@@ -170,6 +179,30 @@ def me(
         )
 
 
+@router.get("/userinfo")
+def userinfo(
+    current_user: Annotated[User, Depends(get_user_from_access_token)],
+):
+    """
+    OAuth2 UserInfo endpoint.
+    Uses the 'access_token' (OAuth token) to return user information.
+    This is what the Client App should use instead of /auth/me.
+    """
+    try:
+        return {
+            "id": str(current_user.id),
+            "email": current_user.email,
+            "role": current_user.role,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Userinfo error: {e}")
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal Server Error"}
+        )
+
+
 @router.post("/logout")
 def logout():
     response = JSONResponse(
@@ -177,7 +210,15 @@ def logout():
     )
 
     response.delete_cookie(key="token", samesite="lax")
-    response.delete_cookie(key="access_token", samesite="lax")
-    response.delete_cookie(key="refresh_token", samesite="lax")
 
     return response
+
+
+@router.post("/forgot-password")
+def forgot_password(data: dict):
+    email = data.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    print(f"Password reset requested for: {email}")
+    return {"message": "If this email is registered, a reset link has been sent."}

@@ -1,70 +1,184 @@
-import React from "react";
+import { useState } from "react";
 
-export default function Home() {
+const REQUESTED_SCOPES = ["read", "create", "update", "delete"];
+
+export default function OAuthAuthorize() {
   const CLIENT_ID = import.meta.env.VITE_AUTH_CLIENT_ID;
-
-  const AUTH_CONFIG = {
-    url: "http://localhost:8000/authorize",
-    client_id: CLIENT_ID,
-    redirect_uri: "http://localhost:4000/oauth/callback",
-    scope: "admin",
-    state: "auth_request",
-  };
+  const [error, setError] = useState<string | null>(null);
 
   const handleLoginOAuth = () => {
     try {
-      const getCookie = (name: string) => {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop()?.split(";").shift();
-        return null;
-      };
-
-      const token = getCookie("token");
-
-      // Generate random state for CSRF protection
-      const state = Math.random().toString(36).substring(7);
+      const state = crypto.randomUUID();
       sessionStorage.setItem("oauth_state", state);
 
       const params = new URLSearchParams({
         response_type: "code",
-        client_id: AUTH_CONFIG.client_id,
+        client_id: CLIENT_ID,
         redirect_uri: window.location.origin + "/oauth/callback",
-        scope: AUTH_CONFIG.scope,
+        scope: REQUESTED_SCOPES.join(" "),
         state: state,
       });
 
-      const queryString = new URLSearchParams(params).toString();
-      const url = `http://localhost:8000/authorize?${queryString}`;
-
+      const url = `http://localhost:8000/authorize?${params.toString()}`;
       window.location.href = url;
     } catch (err) {
       console.error(err);
+      setError("Failed to start authorization flow.");
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
-        <h1 className="text-2xl font-bold text-gray-800 mb-4">
-          Bem-vindo ao Client App
-        </h1>
-        <p className="text-gray-600 mb-8">
-          Para acessar seus recursos protegidos, precisamos da sua autorização
-          no servidor central.
-        </p>
+    <div style={styles.container}>
+      <div style={styles.card}>
+        <div style={styles.header}>
+          <div style={styles.iconBox}>🚀</div>
+          <h1 style={styles.title}>Bem-vindo ao Client App</h1>
+          <p style={styles.subtitle}>
+            Para acessar seus recursos protegidos, você precisa autorizar este
+            aplicativo através do servidor de autenticação.
+          </p>
+        </div>
 
-        <button
-          onClick={handleLoginOAuth}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 ease-in-out transform hover:scale-105"
-        >
+        <div style={styles.scopePreview}>
+          <h3 style={styles.scopePreviewTitle}>
+            Permissões que serão solicitadas:
+          </h3>
+          <ul style={styles.scopeList}>
+            {REQUESTED_SCOPES.map((scope) => (
+              <li key={scope} style={styles.scopeItem}>
+                <span style={styles.scopeIcon}>✓</span>
+                <span style={styles.scopeLabel}>{scope}</span>
+              </li>
+            ))}
+          </ul>
+          <p style={styles.scopeNote}>
+            Você poderá revisar e aprovar estas permissões na próxima tela.
+          </p>
+        </div>
+
+        {error && <p style={styles.errorText}>{error}</p>}
+
+        <button onClick={handleLoginOAuth} style={styles.button}>
           Autorizar com MyAuth Server
         </button>
 
-        <div className="mt-6 text-sm text-gray-400">
-          Você será redirecionado para o servidor de login com segurança.
+        <div style={styles.footerNote}>
+          Você será redirecionado para o servidor de autenticação com segurança.
         </div>
       </div>
     </div>
   );
 }
+
+const styles = {
+  container: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "100vh",
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    padding: "20px",
+    fontFamily: "'Inter', sans-serif",
+  },
+  card: {
+    backgroundColor: "#ffffff",
+    padding: "40px",
+    borderRadius: "24px",
+    boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+    width: "100%",
+    maxWidth: "480px",
+    textAlign: "center" as const,
+  },
+  header: {
+    marginBottom: "32px",
+  },
+  iconBox: {
+    width: "64px",
+    height: "64px",
+    backgroundColor: "#f7fafc",
+    borderRadius: "16px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "32px",
+    margin: "0 auto 20px auto",
+  },
+  title: {
+    fontSize: "24px",
+    fontWeight: "700",
+    color: "#1a202c",
+    margin: "0 0 10px 0",
+  },
+  subtitle: {
+    fontSize: "15px",
+    color: "#718096",
+    lineHeight: "1.6",
+    margin: 0,
+  },
+  scopePreview: {
+    textAlign: "left" as const,
+    backgroundColor: "#f8fafc",
+    borderRadius: "12px",
+    padding: "20px",
+    marginBottom: "24px",
+    border: "1px solid #edf2f7",
+  },
+  scopePreviewTitle: {
+    fontSize: "14px",
+    fontWeight: "600",
+    color: "#4a5568",
+    margin: "0 0 12px 0",
+  },
+  scopeList: {
+    listStyle: "none",
+    padding: 0,
+    margin: "0 0 12px 0",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "8px",
+  },
+  scopeItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  scopeIcon: {
+    color: "#48bb78",
+    fontWeight: "700",
+    fontSize: "14px",
+  },
+  scopeLabel: {
+    fontSize: "14px",
+    color: "#2d3748",
+    textTransform: "capitalize" as const,
+  },
+  scopeNote: {
+    fontSize: "12px",
+    color: "#a0aec0",
+    margin: 0,
+    fontStyle: "italic",
+  },
+  button: {
+    width: "100%",
+    padding: "16px",
+    backgroundColor: "#667eea",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: "12px",
+    cursor: "pointer",
+    fontSize: "16px",
+    fontWeight: "600",
+    transition: "all 0.2s",
+    boxShadow: "0 10px 15px -3px rgba(102, 126, 234, 0.4)",
+  },
+  errorText: {
+    color: "#e53e3e",
+    fontSize: "14px",
+    marginBottom: "20px",
+  },
+  footerNote: {
+    marginTop: "20px",
+    fontSize: "12px",
+    color: "#a0aec0",
+  },
+};

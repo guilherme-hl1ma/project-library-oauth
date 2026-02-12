@@ -8,11 +8,12 @@
 
 html,
 body {
-  @apply bg-white dark:bg-gray-950;
+  background-color: #ffffff;
+  color: #1a202c;
+}
 
-  @media (prefers-color-scheme: dark) {
-    color-scheme: dark;
-  }
+* {
+  color: inherit;
 }
 
 @keyframes spin {
@@ -35,3 +36,22 @@ button:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
+
+.auth-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.auth-link:hover {
+  color: #5568d3;
+  text-decoration: underline;
+}
+
+.forgot-password-link {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
