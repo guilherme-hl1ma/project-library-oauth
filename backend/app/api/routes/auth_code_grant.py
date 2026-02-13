@@ -796,14 +796,20 @@ def _authenticate_client(
 
 
 @router.post(path="/token/revoke")
-def revoke_tokens():
+def revoke_tokens(request: Request):
     """
     Full logout — revokes ALL tokens:
     - access_token and refresh_token (OAuth tokens)
-    - token (Auth Server session)
+    - id_token (OIDC identity token)
+    - token (Auth Server session — invalidated in Redis)
 
     The user will need to log in again on the Auth Server.
     """
+    # Invalidate the Auth Server session in Redis
+    session_id = request.cookies.get("token")
+    if session_id:
+        redis_client.delete(f"session:{session_id}")
+
     response = JSONResponse(
         status_code=200,
         content={"message": "All tokens revoked successfully"},

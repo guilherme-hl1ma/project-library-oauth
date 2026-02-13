@@ -1,26 +1,39 @@
-from datetime import datetime, timedelta, timezone
 import os
-import uuid
+import secrets
 import traceback
 from typing import Annotated
 from fastapi.responses import JSONResponse
 from sqlmodel import select
-import jwt
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.database import SessionDep
 from app.core.bcrypt_encrypter import hash_text, verify_text
+from app.core.redis_instance import RedisSingleton
 from app.dependencies.auth import (
     get_user_required,
     get_user_from_access_token,
 )
 from app.models.user import UserRole, User
 from app.schemas.user.user import UserLogin, UserRegistration
+import uuid
 
-router = APIRouter(prefix="/auth", tags=["JWT Authentication"])
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-SECRET_JWT = os.getenv("SECRET_JWT")
-JWT_ISSUER = os.getenv("JWT_ISSUER")
+redis_client = RedisSingleton().getInstance()
+
+SESSION_TTL = 60 * 60 * 24  # 24 hours
+
+
+def _create_session(user: User) -> str:
+    """Create a session in Redis and return the session ID."""
+    session_id = secrets.token_urlsafe(32)
+    session_data = f"{user.id}"
+    redis_client.set(
+        name=f"session:{session_id}",
+        value=session_data,
+        ex=SESSION_TTL,
+    )
+    return session_id
 
 
 @router.post("/signup")
@@ -43,48 +56,35 @@ def signup_jwt(user: UserRegistration, session: SessionDep):
             role=UserRole.USER,
         )
 
-        issued_time = datetime.now(timezone.utc).timestamp()
-        expiration_time = (datetime.now(timezone.utc) + timedelta(hours=24)).timestamp()
-        payload = {
-            "iss": JWT_ISSUER,
-            "sub": user_id,
-            "iat": issued_time,
-            "exp": expiration_time,
-            "email": user.email,
-            "role": UserRole.USER.value,
-        }
-
-        token = jwt.encode(
-            payload=payload,
-            algorithm="HS256",
-            key=str(SECRET_JWT),
-        )
-
-        response = JSONResponse(status_code=200, content=token)
-        response.set_cookie(
-            key="token",
-            value=str(token),
-            httponly=True,
-            # secure=True,
-            samesite="lax",
-            max_age=60 * 60 * 24,
-        )
-
         session.add(new_user)
         session.commit()
         session.refresh(new_user)
+
+        session_id = _create_session(new_user)
+
+        response = JSONResponse(
+            status_code=200,
+            content={"message": "User created successfully"},
+        )
+        response.set_cookie(
+            key="token",
+            value=session_id,
+            httponly=True,
+            samesite="lax",
+            max_age=SESSION_TTL,
+        )
 
         return response
     except HTTPException as e:
         return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
     except TypeError as e:
-        print("[signup_jwt - signup_session] TypeError:", str(e))
+        print("[signup - session] TypeError:", str(e))
         traceback.print_exc()
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
         )
     except Exception as e:
-        print("[signup_jwt - signup_session] Error:", str(e))
+        print("[signup - session] Error:", str(e))
         traceback.print_exc()
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
@@ -114,41 +114,25 @@ def login(user: UserLogin, session: SessionDep):
                 detail="Invalid user. Try again.",
             )
 
-        issued_time = datetime.now(timezone.utc).timestamp()
-        expiration_time = (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp()
-        payload = {
-            "iss": JWT_ISSUER,
-            "sub": user_db.id,
-            "iat": issued_time,
-            "exp": expiration_time,
-            "email": user.email,
-            "role": UserRole.USER.value,
-        }
+        session_id = _create_session(user_db)
 
-        if SECRET_JWT is None:
-            raise HTTPException(status_code=500, detail="Internal server error.")
-
-        token = jwt.encode(
-            payload=payload,
-            algorithm="HS256",
-            key=SECRET_JWT,
+        response = JSONResponse(
+            status_code=200,
+            content={"message": "Login successful"},
         )
-
-        response = JSONResponse(status_code=200, content=token)
         response.set_cookie(
             key="token",
-            value=str(token),
+            value=session_id,
             httponly=True,
-            # secure=True,
             samesite="lax",
-            max_age=60 * 60 * 24,
+            max_age=SESSION_TTL,
         )
 
         return response
     except HTTPException as e:
         return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
     except Exception as e:
-        print("[jwt_auth - login] Error:", e)
+        print("[auth - login] Error:", e)
         traceback.print_exc()
         return JSONResponse(
             status_code=500, content={"detail": "Internal Server Error"}
@@ -161,7 +145,7 @@ def me(
 ):
     """
     Auth Server session endpoint.
-    Uses the 'token' cookie (auth server session) to identify the user.
+    Uses the 'token' cookie (opaque session ID in Redis) to identify the user.
     This is for the Auth Server's own use (e.g., consent screen, auth-frontend).
     """
     try:
@@ -184,9 +168,8 @@ def userinfo(
     current_user: Annotated[User, Depends(get_user_from_access_token)],
 ):
     """
-    OAuth2 UserInfo endpoint.
+    OAuth2/OIDC UserInfo endpoint.
     Uses the 'access_token' (OAuth token) to return user information.
-    This is what the Client App should use instead of /auth/me.
     """
     try:
         return {
@@ -204,10 +187,16 @@ def userinfo(
 
 
 @router.post("/logout")
-def logout():
+def logout(request=None):
     response = JSONResponse(
         status_code=200, content={"message": "Logged out successfully"}
     )
+
+    # Invalidate the session in Redis
+    if request:
+        session_id = request.cookies.get("token")
+        if session_id:
+            redis_client.delete(f"session:{session_id}")
 
     response.delete_cookie(key="token", samesite="lax")
 

@@ -4,28 +4,31 @@ from fastapi import Depends, HTTPException, Request
 import jwt
 
 from app.core.database import SessionDep
+from app.core.redis_instance import RedisSingleton
 from app.models.user import User
 
 SECRET_JWT = os.getenv("SECRET_JWT")
 JWT_ISSUER = os.getenv("JWT_ISSUER")
+redis_client = RedisSingleton().getInstance()
 
 
 # =====================
 # USER Session (token)
-# Used by Auth Server internally during OAuth flow
+# Uses opaque session ID stored in Redis
 # =====================
 
 def get_current_user_or_none(session: SessionDep, request: Request) -> User | None:
     try:
-        token = request.cookies.get("token") or request.headers.get("X-Token")
-        if not token:
+        session_id = request.cookies.get("token") or request.headers.get("X-Token")
+        if not session_id:
             return None
 
-        token_decoded = jwt.decode(
-            token, key=str(SECRET_JWT), algorithms=["HS256"], issuer=JWT_ISSUER
-        )
-        user_id = token_decoded.get("sub")
-        return session.get(User, user_id)
+        # Look up the session in Redis
+        user_id = redis_client.get(f"session:{session_id}")
+        if not user_id:
+            return None
+
+        return session.get(User, str(user_id))
     except Exception:
         return None
 
